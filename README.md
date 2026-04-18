@@ -63,3 +63,35 @@ curl http://localhost:9100/metrics
 go build ./...
 go vet ./...
 ```
+
+## Installation
+
+### Build and install as a launchd daemon (macOS)
+
+```bash
+make install
+```
+
+This will:
+1. Build the binary to ~/go/bin/agent-exporter
+2. Install the launchd plist to ~/Library/LaunchAgents/
+3. Start agent-exporter as a background service
+
+### Endpoints
+
+- Prometheus metrics: http://localhost:9100/metrics
+- MCP HTTP server: http://localhost:9101/mcp
+- Health check: http://localhost:9101/health
+
+### Uninstall
+
+```bash
+make uninstall
+```
+
+### Logs
+
+```bash
+tail -f /tmp/agent-exporter.log
+tail -f /tmp/agent-exporter.err
+```
