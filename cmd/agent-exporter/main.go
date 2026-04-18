@@ -14,6 +14,7 @@ import (
 
 	"github.com/chaspy/agent-exporter/internal/collector"
 	"github.com/chaspy/agent-exporter/internal/exporter"
+	"github.com/chaspy/agent-exporter/internal/mcp"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -26,6 +27,7 @@ type fileConfig struct {
 	CodexDB           string `yaml:"codex_db"`
 	ClaudeProjectsDir string `yaml:"claude_projects_dir"`
 	PrometheusPort    int    `yaml:"prometheus_port"`
+	MCPPort           int    `yaml:"mcp_port"`
 	CollectInterval   string `yaml:"collect_interval"`
 }
 
@@ -35,6 +37,7 @@ type config struct {
 	CodexDB           string
 	ClaudeProjectsDir string
 	PrometheusPort    int
+	MCPPort           int
 	CollectInterval   time.Duration
 }
 
@@ -108,13 +111,15 @@ func run(parent context.Context, configPath string) error {
 		logger.Warn("initial collection failed", "error", err)
 	}
 
-	server := exporter.NewServer(cfg.PrometheusPort, registry)
-	serverErrCh := make(chan error, 1)
+	metricsServer := exporter.NewServer(cfg.PrometheusPort, registry)
+	mcpServer := mcp.NewServer(cfg.MCPPort, cfg.AgentctlDB, cfg.CodexDB)
+	serverErrCh := make(chan error, 2)
 
 	go func() {
 		logger.Info(
 			"starting exporter",
-			"addr", server.Addr,
+			"metrics_addr", metricsServer.Addr,
+			"mcp_addr", mcpServer.Addr,
 			"agentctl_db", cfg.AgentctlDB,
 			"ccusage_cache", cfg.CCUsageCache,
 			"codex_db", cfg.CodexDB,
@@ -122,8 +127,14 @@ func run(parent context.Context, configPath string) error {
 			"collect_interval", cfg.CollectInterval.String(),
 		)
 
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			serverErrCh <- err
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErrCh <- fmt.Errorf("metrics server failed: %w", err)
+		}
+	}()
+
+	go func() {
+		if err := mcpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErrCh <- fmt.Errorf("mcp server failed: %w", err)
 		}
 	}()
 
@@ -136,8 +147,15 @@ func run(parent context.Context, configPath string) error {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			if err := server.Shutdown(shutdownCtx); err != nil {
-				return fmt.Errorf("shutdown metrics server: %w", err)
+			var shutdownErrors []error
+			if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+				shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown metrics server: %w", err))
+			}
+			if err := mcpServer.Shutdown(shutdownCtx); err != nil {
+				shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown mcp server: %w", err))
+			}
+			if err := errors.Join(shutdownErrors...); err != nil {
+				return err
 			}
 
 			logger.Info("exporter stopped")
@@ -147,7 +165,20 @@ func run(parent context.Context, configPath string) error {
 				logger.Warn("periodic collection failed", "error", err)
 			}
 		case err := <-serverErrCh:
-			return fmt.Errorf("metrics server failed: %w", err)
+			stop()
+
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			var shutdownErrors []error
+			if shutdownErr := metricsServer.Shutdown(shutdownCtx); shutdownErr != nil {
+				shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown metrics server: %w", shutdownErr))
+			}
+			if shutdownErr := mcpServer.Shutdown(shutdownCtx); shutdownErr != nil {
+				shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown mcp server: %w", shutdownErr))
+			}
+
+			return errors.Join(append([]error{err}, shutdownErrors...)...)
 		}
 	}
 }
@@ -173,6 +204,7 @@ func loadConfig(path string) (config, error) {
 		CodexDB:           "${HOME}/.codex/state_5.sqlite",
 		ClaudeProjectsDir: "${HOME}/.claude/projects",
 		PrometheusPort:    9100,
+		MCPPort:           9101,
 		CollectInterval:   "5m",
 	}
 
@@ -220,12 +252,17 @@ func loadConfig(path string) (config, error) {
 		return config{}, fmt.Errorf("prometheus_port must be between 1 and 65535")
 	}
 
+	if raw.MCPPort <= 0 || raw.MCPPort > 65535 {
+		return config{}, fmt.Errorf("mcp_port must be between 1 and 65535")
+	}
+
 	return config{
 		AgentctlDB:        agentctlDB,
 		CCUsageCache:      ccusageCache,
 		CodexDB:           codexDB,
 		ClaudeProjectsDir: claudeProjectsDir,
 		PrometheusPort:    raw.PrometheusPort,
+		MCPPort:           raw.MCPPort,
 		CollectInterval:   interval,
 	}, nil
 }
