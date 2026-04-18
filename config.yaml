@@ -1,0 +1,4 @@
+agentctl_db: ${HOME}/.agentctl/manager.db
+ccusage_cache: ${HOME}/.agentctl/ccusage-cache.json
+prometheus_port: 9100
+collect_interval: 5m
