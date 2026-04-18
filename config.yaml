@@ -1,4 +1,6 @@
 agentctl_db: ${HOME}/.agentctl/manager.db
 ccusage_cache: ${HOME}/.agentctl/ccusage-cache.json
+codex_db: ${HOME}/.codex/state_5.sqlite
+claude_projects_dir: ${HOME}/.claude/projects
 prometheus_port: 9100
 collect_interval: 5m

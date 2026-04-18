@@ -21,17 +21,25 @@ import (
 const collectionTimeout = 30 * time.Second
 
 type fileConfig struct {
-	AgentctlDB      string `yaml:"agentctl_db"`
-	CCUsageCache    string `yaml:"ccusage_cache"`
-	PrometheusPort  int    `yaml:"prometheus_port"`
-	CollectInterval string `yaml:"collect_interval"`
+	AgentctlDB        string `yaml:"agentctl_db"`
+	CCUsageCache      string `yaml:"ccusage_cache"`
+	CodexDB           string `yaml:"codex_db"`
+	ClaudeProjectsDir string `yaml:"claude_projects_dir"`
+	PrometheusPort    int    `yaml:"prometheus_port"`
+	CollectInterval   string `yaml:"collect_interval"`
 }
 
 type config struct {
-	AgentctlDB      string
-	CCUsageCache    string
-	PrometheusPort  int
-	CollectInterval time.Duration
+	AgentctlDB        string
+	CCUsageCache      string
+	CodexDB           string
+	ClaudeProjectsDir string
+	PrometheusPort    int
+	CollectInterval   time.Duration
+}
+
+type collectorRunner interface {
+	Collect(ctx context.Context) error
 }
 
 func main() {
@@ -77,10 +85,26 @@ func run(parent context.Context, configPath string) error {
 		cfg.CCUsageCache,
 	)
 	if err != nil {
-		return fmt.Errorf("initialize collector: %w", err)
+		return fmt.Errorf("initialize agentctl collector: %w", err)
 	}
 
-	if err := collectOnce(ctx, agentctlCollector); err != nil {
+	codexCollector, err := collector.NewCodexCollector(registry, cfg.CodexDB)
+	if err != nil {
+		return fmt.Errorf("initialize codex collector: %w", err)
+	}
+
+	claudeCollector, err := collector.NewClaudeCollector(registry, cfg.ClaudeProjectsDir)
+	if err != nil {
+		return fmt.Errorf("initialize claude collector: %w", err)
+	}
+
+	collectors := []collectorRunner{
+		agentctlCollector,
+		codexCollector,
+		claudeCollector,
+	}
+
+	if err := collectOnce(ctx, collectors...); err != nil {
 		logger.Warn("initial collection failed", "error", err)
 	}
 
@@ -93,6 +117,8 @@ func run(parent context.Context, configPath string) error {
 			"addr", server.Addr,
 			"agentctl_db", cfg.AgentctlDB,
 			"ccusage_cache", cfg.CCUsageCache,
+			"codex_db", cfg.CodexDB,
+			"claude_projects_dir", cfg.ClaudeProjectsDir,
 			"collect_interval", cfg.CollectInterval.String(),
 		)
 
@@ -117,7 +143,7 @@ func run(parent context.Context, configPath string) error {
 			logger.Info("exporter stopped")
 			return nil
 		case <-ticker.C:
-			if err := collectOnce(ctx, agentctlCollector); err != nil {
+			if err := collectOnce(ctx, collectors...); err != nil {
 				logger.Warn("periodic collection failed", "error", err)
 			}
 		case err := <-serverErrCh:
@@ -126,19 +152,28 @@ func run(parent context.Context, configPath string) error {
 	}
 }
 
-func collectOnce(parent context.Context, agentctlCollector *collector.AgentctlCollector) error {
+func collectOnce(parent context.Context, collectors ...collectorRunner) error {
 	ctx, cancel := context.WithTimeout(parent, collectionTimeout)
 	defer cancel()
 
-	return agentctlCollector.Collect(ctx)
+	var collectErrors []error
+	for _, collector := range collectors {
+		if err := collector.Collect(ctx); err != nil {
+			collectErrors = append(collectErrors, err)
+		}
+	}
+
+	return errors.Join(collectErrors...)
 }
 
 func loadConfig(path string) (config, error) {
 	raw := fileConfig{
-		AgentctlDB:      "${HOME}/.agentctl/manager.db",
-		CCUsageCache:    "${HOME}/.agentctl/ccusage-cache.json",
-		PrometheusPort:  9100,
-		CollectInterval: "5m",
+		AgentctlDB:        "${HOME}/.agentctl/manager.db",
+		CCUsageCache:      "${HOME}/.agentctl/ccusage-cache.json",
+		CodexDB:           "${HOME}/.codex/state_5.sqlite",
+		ClaudeProjectsDir: "${HOME}/.claude/projects",
+		PrometheusPort:    9100,
+		CollectInterval:   "5m",
 	}
 
 	content, err := os.ReadFile(path)
@@ -162,6 +197,16 @@ func loadConfig(path string) (config, error) {
 		return config{}, fmt.Errorf("resolve ccusage_cache: %w", err)
 	}
 
+	codexDB, err := expandPath(raw.CodexDB)
+	if err != nil {
+		return config{}, fmt.Errorf("resolve codex_db: %w", err)
+	}
+
+	claudeProjectsDir, err := expandPath(raw.ClaudeProjectsDir)
+	if err != nil {
+		return config{}, fmt.Errorf("resolve claude_projects_dir: %w", err)
+	}
+
 	interval, err := time.ParseDuration(raw.CollectInterval)
 	if err != nil {
 		return config{}, fmt.Errorf("parse collect_interval: %w", err)
@@ -176,10 +221,12 @@ func loadConfig(path string) (config, error) {
 	}
 
 	return config{
-		AgentctlDB:      agentctlDB,
-		CCUsageCache:    ccusageCache,
-		PrometheusPort:  raw.PrometheusPort,
-		CollectInterval: interval,
+		AgentctlDB:        agentctlDB,
+		CCUsageCache:      ccusageCache,
+		CodexDB:           codexDB,
+		ClaudeProjectsDir: claudeProjectsDir,
+		PrometheusPort:    raw.PrometheusPort,
+		CollectInterval:   interval,
 	}, nil
 }
 
