@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chaspy.agent-exporter</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/chaspy/go/bin/agent-exporter</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/chaspy/.local/share/aquaproj-aqua/bin:/Users/chaspy/.local/bin:/Users/chaspy/.pyenv/shims:/Users/chaspy/.cargo/bin:/Users/chaspy/go/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>/Users/chaspy/go/src/github.com/chaspy/agent-exporter</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/agent-exporter.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/agent-exporter.err</string>
+</dict>
+</plist>
