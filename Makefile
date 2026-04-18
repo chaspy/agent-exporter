@@ -13,7 +13,7 @@ install: build
 	@echo "agent-exporter started. Logs: /tmp/agent-exporter.log"
 
 uninstall:
-	launchctl unload $(PLIST_DEST)
+	launchctl unload $(PLIST_DEST) 2>/dev/null || true
 	rm -f $(PLIST_DEST)
 	@echo "agent-exporter uninstalled."
 
