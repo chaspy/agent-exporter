@@ -38,3 +38,52 @@ func TestExtractRepositoryFromGitOrigin(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractRepositoryFromCWD(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		cwd  string
+		want string
+	}{
+		{
+			name: "repo root",
+			cwd:  "/Users/chaspy/go/src/github.com/chaspy/myassistant",
+			want: "chaspy/myassistant",
+		},
+		{
+			name: "worktree path",
+			cwd:  "/Users/chaspy/go/src/github.com/chaspy/myassistant/worktree-main",
+			want: "chaspy/myassistant",
+		},
+		{
+			name: "non github cwd",
+			cwd:  "/tmp/sandbox",
+			want: "unknown",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := extractRepositoryFromCWD(tt.cwd); got != tt.want {
+				t.Fatalf("extractRepositoryFromCWD(%q) = %q, want %q", tt.cwd, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeCodexModel(t *testing.T) {
+	t.Parallel()
+
+	if got := normalizeCodexModel("", "openai"); got != "openai" {
+		t.Fatalf("normalizeCodexModel fallback = %q, want %q", got, "openai")
+	}
+
+	if got := normalizeCodexModel("gpt-5.4", "openai"); got != "gpt-5.4" {
+		t.Fatalf("normalizeCodexModel explicit = %q, want %q", got, "gpt-5.4")
+	}
+}

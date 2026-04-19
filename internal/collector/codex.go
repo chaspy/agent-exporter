@@ -66,8 +66,10 @@ func (c *CodexCollector) Collect(ctx context.Context) error {
 		SELECT
 			id,
 			COALESCE(NULLIF(model, ''), 'unknown'),
+			COALESCE(NULLIF(model_provider, ''), 'unknown'),
 			COALESCE(tokens_used, 0),
-			git_origin_url
+			git_origin_url,
+			COALESCE(NULLIF(cwd, ''), '')
 		FROM threads
 		ORDER BY id
 	`)
@@ -78,13 +80,15 @@ func (c *CodexCollector) Collect(ctx context.Context) error {
 
 	for rows.Next() {
 		var (
-			id           string
-			model        string
-			tokensUsed   int64
-			gitOriginURL sql.NullString
+			id            string
+			model         string
+			modelProvider string
+			tokensUsed    int64
+			gitOriginURL  sql.NullString
+			cwd           string
 		)
 
-		if err := rows.Scan(&id, &model, &tokensUsed, &gitOriginURL); err != nil {
+		if err := rows.Scan(&id, &model, &modelProvider, &tokensUsed, &gitOriginURL, &cwd); err != nil {
 			return err
 		}
 
@@ -96,14 +100,30 @@ func (c *CodexCollector) Collect(ctx context.Context) error {
 			tokensUsed = 0
 		}
 
-		model = normalizeMetricLabel(model)
-		repository := extractRepositoryFromGitOrigin(gitOriginURL.String)
+		model = normalizeCodexModel(model, modelProvider)
+		repository := extractRepositoryFromThread(gitOriginURL.String, cwd)
 		c.threadTokensTotal.WithLabelValues(model, repository).Add(float64(tokensUsed))
 		c.threadTokensHistogram.WithLabelValues(model).Observe(float64(tokensUsed))
 		c.observedThreadIDs[id] = struct{}{}
 	}
 
 	return rows.Err()
+}
+
+func normalizeCodexModel(model string, provider string) string {
+	normalizedModel := normalizeMetricLabel(model)
+	if normalizedModel != "unknown" {
+		return normalizedModel
+	}
+	return normalizeMetricLabel(provider)
+}
+
+func extractRepositoryFromThread(origin string, cwd string) string {
+	repository := extractRepositoryFromGitOrigin(origin)
+	if repository != "unknown" {
+		return repository
+	}
+	return extractRepositoryFromCWD(cwd)
 }
 
 func extractRepositoryFromGitOrigin(origin string) string {
@@ -132,4 +152,26 @@ func extractRepositoryFromGitOrigin(origin string) string {
 	}
 
 	return path
+}
+
+func extractRepositoryFromCWD(cwd string) string {
+	normalized := strings.Trim(strings.TrimSpace(cwd), "/")
+	if normalized == "" {
+		return "unknown"
+	}
+
+	parts := strings.Split(normalized, "/")
+	for index := 0; index+2 < len(parts); index++ {
+		if parts[index] != "github.com" {
+			continue
+		}
+		owner := strings.TrimSpace(parts[index+1])
+		repo := strings.TrimSpace(parts[index+2])
+		if owner == "" || repo == "" {
+			return "unknown"
+		}
+		return owner + "/" + repo
+	}
+
+	return "unknown"
 }
