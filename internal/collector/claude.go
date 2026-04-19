@@ -55,30 +55,30 @@ func NewClaudeCollector(registry prometheus.Registerer, projectsDir string) (*Cl
 		inputTokensTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "claude_input_tokens_total",
-				Help: "Total Claude input tokens grouped by model.",
+				Help: "Total Claude input tokens grouped by model and repository.",
 			},
-			[]string{"model"},
+			[]string{"model", "repository"},
 		),
 		outputTokensTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "claude_output_tokens_total",
-				Help: "Total Claude output tokens grouped by model.",
+				Help: "Total Claude output tokens grouped by model and repository.",
 			},
-			[]string{"model"},
+			[]string{"model", "repository"},
 		),
 		cacheCreationTokensTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "claude_cache_creation_tokens_total",
-				Help: "Total Claude cache creation input tokens grouped by model.",
+				Help: "Total Claude cache creation input tokens grouped by model and repository.",
 			},
-			[]string{"model"},
+			[]string{"model", "repository"},
 		),
 		cacheReadTokensTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "claude_cache_read_tokens_total",
-				Help: "Total Claude cache read input tokens grouped by model.",
+				Help: "Total Claude cache read input tokens grouped by model and repository.",
 			},
-			[]string{"model"},
+			[]string{"model", "repository"},
 		),
 		observedMessageIDs: make(map[string]struct{}),
 	}
@@ -163,6 +163,7 @@ func (c *ClaudeCollector) collectFile(ctx context.Context, path string) error {
 	scanner.Buffer(make([]byte, 1024*1024), claudeJSONLMaxLineSize)
 
 	project := extractClaudeProject(path, c.projectsDir)
+	repository := normalizeMetricLabel(project)
 	lineNumber := 0
 	for scanner.Scan() {
 		select {
@@ -200,10 +201,10 @@ func (c *ClaudeCollector) collectFile(ctx context.Context, path string) error {
 		}
 
 		model := normalizeMetricLabel(record.Model)
-		c.inputTokensTotal.WithLabelValues(model).Add(float64(clampNonNegative(record.Message.Usage.InputTokens)))
-		c.outputTokensTotal.WithLabelValues(model).Add(float64(clampNonNegative(record.Message.Usage.OutputTokens)))
-		c.cacheCreationTokensTotal.WithLabelValues(model).Add(float64(clampNonNegative(record.Message.Usage.CacheCreationInputTokens)))
-		c.cacheReadTokensTotal.WithLabelValues(model).Add(float64(clampNonNegative(record.Message.Usage.CacheReadInputTokens)))
+		c.inputTokensTotal.WithLabelValues(model, repository).Add(float64(clampNonNegative(record.Message.Usage.InputTokens)))
+		c.outputTokensTotal.WithLabelValues(model, repository).Add(float64(clampNonNegative(record.Message.Usage.OutputTokens)))
+		c.cacheCreationTokensTotal.WithLabelValues(model, repository).Add(float64(clampNonNegative(record.Message.Usage.CacheCreationInputTokens)))
+		c.cacheReadTokensTotal.WithLabelValues(model, repository).Add(float64(clampNonNegative(record.Message.Usage.CacheReadInputTokens)))
 		c.observedMessageIDs[observationKey] = struct{}{}
 	}
 

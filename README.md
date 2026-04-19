@@ -14,16 +14,23 @@ Prometheus exporter for AI agent observability with agentctl-backed metrics.
 ## Metrics
 
 - `agent_session_count{status,agent,repository}`
+- `agent_session_runtime_count{status,runtime_status,role,is_loop,is_protected}`
 - `agent_task_total{status}`
 - `agent_task_duration_seconds`
 - `agent_action_token_burn_total{agent,repository}`
 - `agent_cost_per_hour`
+- `agent_protected_session_count`
+- `agent_cleanup_candidate_count{kind}`
+- `agent_pr_mergeable_count{state}`
+- `agent_job_run_count{job,status}`
+- `agent_job_last_success_timestamp_seconds{job}`
+- `agent_job_last_duration_seconds{job}`
 - `codex_thread_tokens_total{model,repository}`
 - `codex_thread_tokens_histogram{model}`
-- `claude_input_tokens_total{model}`
-- `claude_output_tokens_total{model}`
-- `claude_cache_creation_tokens_total{model}`
-- `claude_cache_read_tokens_total{model}`
+- `claude_input_tokens_total{model,repository}`
+- `claude_output_tokens_total{model,repository}`
+- `claude_cache_creation_tokens_total{model,repository}`
+- `claude_cache_read_tokens_total{model,repository}`
 
 ## Configuration
 
