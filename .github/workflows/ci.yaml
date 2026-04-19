@@ -25,7 +25,9 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           git fetch origin "${{ github.base_ref }}:refs/remotes/origin/pr-base"
-          if ! git diff --name-only refs/remotes/origin/pr-base...HEAD | grep -qx 'VERSION'; then
+          changed_files="$(git diff --name-only refs/remotes/origin/pr-base...HEAD)"
+          version_required="$(printf '%s\n' "$changed_files" | grep -qvE '^(\.github/|README\.md$|VERSION$)' && echo yes || echo no)"
+          if [ "$version_required" = "yes" ] && ! printf '%s\n' "$changed_files" | grep -qx 'VERSION'; then
             echo "VERSION must be updated in this pull request" >&2
             exit 1
           fi
